@@ -1,0 +1,88 @@
+/** @import must precede all other statements */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /**
+   * Tailwind CSS theme - Dark mode only
+   * tailwind.config.ts expects the following color variables to be expressed as HSL values.
+   * A different format will require also updating the theme in tailwind.config.ts.
+  */
+  :root {
+    /* Dark mode inspired by second image */
+    --background: 0 0% 6%;
+    --foreground: 0 0% 100%;
+
+    --card: 0 0% 8%;
+    --card-foreground: 0 0% 98%;
+
+    --popover: 0 0% 8%;
+    --popover-foreground: 0 0% 98%;
+
+    /* Brand palette (from user image) */
+    --brand-blue: 227 100% 76%; /* #88A2FF */
+    --brand-lime: 73 96% 76%;  /* #E3FC87 */
+    --brand-navy: 226 56% 33%; /* #253A82 */
+    --brand-pink: 300 100% 85%;/* #FFB3FF */
+    --brand-lightblue: 210 100% 88%;/* #C0E0FF */
+    --brand-purple: 247 100% 81%;/* #A89DFF */
+
+    /* Map to system tokens */
+    --primary: var(--brand-purple);
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 240 6% 12%;
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 240 6% 12%;
+    --muted-foreground: 240 5% 70%;
+
+    --accent: var(--brand-lime);
+    --accent-foreground: 224 14% 12%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 240 4% 18%;
+    --input: 240 4% 18%;
+    --ring: var(--brand-purple);
+
+    --radius: 0.5rem;
+
+    /* Sidebar (dark) */
+    --sidebar-background: 0 0% 6%;
+    --sidebar-foreground: 0 0% 98%;
+    --sidebar-primary: var(--brand-purple);
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 6% 12%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 240 4% 18%;
+    --sidebar-ring: var(--brand-lime);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  .animate-gradient {
+    background-size: 200% 200%;
+    animation: gradient-shift 8s ease infinite;
+  }
+}
+
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}

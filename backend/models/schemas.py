@@ -1,11 +1,11 @@
+# backend/models/schemas.py
 from pydantic import BaseModel
-from typing import List
-from typing import Optional
+from typing import List, Optional
 
 class YouTubeRequest(BaseModel):
     url: str
 
-class YouTubeResponse(BaseModel):
+class YouTubeRespons44e(BaseModel):
     summary: str
 
 class ChatRequest(BaseModel):
@@ -13,11 +13,11 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     reply: str
-    
+
 class FlashcardRequest(BaseModel):
-    topic: str | None = None
-    text: str | None = None
-    file_name: str | None = None
+    topic: Optional[str] = None
+    text: Optional[str] = None
+    file_name: Optional[str] = None
 
 class Card(BaseModel):
     q: str
@@ -25,25 +25,21 @@ class Card(BaseModel):
 
 class FlashcardResponse(BaseModel):
     cards: List[Card]
-    
+
 class PDFSummaryRequest(BaseModel):
-    # If you allow both text input and PDF file, you can accept text
-    # But here we focus on file upload route, so file is separate
-    text: Optional[str] = None  # optional if you want to accept raw text too
+    text: Optional[str] = None
 
 class PDFSummaryResponse(BaseModel):
     summary: str
-    
-    
+
 class PPTRequest(BaseModel):
     topic: str
-    template_id: str   # or you could send template filename
-    num_slides: int = 5  # how many slides to generate
+    template_id: str
+    num_slides: int = 5
 
 class SlideContent(BaseModel):
     title: str
     bullets: List[str]
 
 class PPTResponse(BaseModel):
-    # Maybe not used; here we will return file, so response might be file
     message: str

@@ -1,19 +1,22 @@
 # backend/routers/pdf.py
-
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from backend.models.schemas import PDFSummaryResponse
-from backend.services.pdf_logic import summarize_pdf_file
+from backend.services import pdf_logic
+import io
 
 router = APIRouter()
 
-@router.post("/pdf/summary", response_model=PDFSummaryResponse)
+@router.post("/", response_model=PDFSummaryResponse)
 async def pdf_summary(file: UploadFile = File(...)):
-    try:
-        # Check file type if you want
-        if not file.filename.lower().endswith(".pdf"):
-            raise HTTPException(status_code=400, detail="Only PDF files are supported")
+    # Validate extension
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported")
 
-        summary = summarize_pdf_file(file.file)  # file.file is a file-like object
+    try:
+        contents = await file.read()  # async read from UploadFile
+        stream = io.BytesIO(contents)
+        # pdf_logic.summarize_pdf_file is async — await it
+        summary = await pdf_logic.summarize_pdf_file(stream)
         return PDFSummaryResponse(summary=summary)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -5,10 +5,9 @@ from backend.services.chatbot import generate_chat_response
 
 router = APIRouter()
 
-@router.post("/chat", response_model=ChatResponse)
+@router.post("/", response_model=ChatResponse)
 async def chat_endpoint(data: ChatRequest):
     try:
-        # generate_chat_response is async
         reply = await generate_chat_response(data.message)
         return ChatResponse(reply=reply)
     except Exception as e:

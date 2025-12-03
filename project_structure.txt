@@ -1,0 +1,194 @@
+PS C:\Users\Prakriti\Desktop\Projects\NoteGPT (1)> tree /f /a
+Folder PATH listing for volume OS
+Volume serial number is 2607-AD3D
+C:.
+|   .dockerignore
+|   .env
+|   .gitignore
+|   .npmrc
+|   .prettierrc
+|   AGENTS.md
+|   components.json
+|   index.html
+|   netlify.toml
+|   package-lock.json
+|   package.json
+|   pnpm-lock.yaml
+|   postcss.config.js
+|   project_structure.txt
+|   tailwind.config.ts
+|   tsconfig.json
+|   vite.config.server.ts
+|   vite.config.ts
+|
++---backend
+|   |   .env
+|   |   .gitignore
+|   |   main.py
+|   |   requirements.txt
+|   |   __init__.py
+|   |
+|   +---core
+|   |       config.py
+|   |
+|   +---models
+|   |   |   schemas.py
+|   |   |
+|   |   \---__pycache__
+|   |           schemas.cpython-313.pyc
+|   |
+|   +---routers
+|   |   |   ai_ppt.py
+|   |   |   chat.py
+|   |   |   flashcards.py
+|   |   |   pdf.py
+|   |   |   youtube.py
+|   |   |   __init__.py
+|   |   |
+|   |   \---__pycache__
+|   |           chat.cpython-313.pyc
+|   |           flashcards.cpython-313.pyc
+|   |           pdf.cpython-313.pyc
+|   |           youtube.cpython-313.pyc
+|   |           __init__.py
+|   |
+|   +---services
+|   |   |   chatbot.py
+|   |   |   flashcards_logic.py
+|   |   |   pdf_logic.py
+|   |   |   ppt_logic.py
+|   |   |   summarizer.py
+|   |   |   __init__.py
+|   |   |
+|   |   \---__pycache__
+|   |           chatbot.cpython-313.pyc
+|   |           flashcards_logic.cpython-313.pyc
+|   |           pdf_logic.cpython-313.pyc
+|   |           summarizer.cpython-313.pyc
+|   |           __init__.cpython-313.pyc
+|   |
+|   +---templates
+|   |       Template 1.pptx
+|   |       Template 2.pptx
+|   |       Template 3.pptx
+|   |       Template 4.pptx
+|   |       Template 5.pptx
+|   |       Template 6.pptx
+|   |
+|   +---utils
+|   |   |   grok_helper.py
+|   |   |
+|   |   \---__pycache__
+|   |           grok_helper.cpython-313.pyc
+|   |
+|   \---__pycache__
+|           main.cpython-313.pyc
+|
++---client
+|   |   App.tsx
+|   |   global.css
+|   |   vite-env.d.ts
+|   |
+|   +---components
+|   |   |   BackButton.tsx
+|   |   |   Footer.tsx
+|   |   |   Header.tsx
+|   |   |   History.tsx
+|   |   |   Layout.tsx
+|   |   |   Sidebar.tsx
+|   |   |   ThemeToggle.tsx
+|   |   |
+|   |   \---ui
+|   |           accordion.tsx
+|   |           alert-dialog.tsx
+|   |           alert.tsx
+|   |           aspect-ratio.tsx
+|   |           avatar.tsx
+|   |           badge.tsx
+|   |           breadcrumb.tsx
+|   |           button.tsx
+|   |           calendar.tsx
+|   |           card.tsx
+|   |           carousel.tsx
+|   |           chart.tsx
+|   |           checkbox.tsx
+|   |           collapsible.tsx
+|   |           command.tsx
+|   |           context-menu.tsx
+|   |           dialog.tsx
+|   |           drawer.tsx
+|   |           dropdown-menu.tsx
+|   |           form.tsx
+|   |           hover-card.tsx
+|   |           input-otp.tsx
+|   |           input.tsx
+|   |           label.tsx
+|   |           menubar.tsx
+|   |           navigation-menu.tsx
+|   |           pagination.tsx
+|   |           popover.tsx
+|   |           progress.tsx
+|   |           radio-group.tsx
+|   |           resizable.tsx
+|   |           scroll-area.tsx
+|   |           select.tsx
+|   |           separator.tsx
+|   |           sheet.tsx
+|   |           sidebar.tsx
+|   |           skeleton.tsx
+|   |           slider.tsx
+|   |           sonner.tsx
+|   |           switch.tsx
+|   |           table.tsx
+|   |           tabs.tsx
+|   |           textarea.tsx
+|   |           toast.tsx
+|   |           toaster.tsx
+|   |           toggle-group.tsx
+|   |           toggle.tsx
+|   |           tooltip.tsx
+|   |           use-toast.ts
+|   |
+|   +---hooks
+|   |       use-mobile.tsx
+|   |       use-toast.ts
+|   |
+|   +---lib
+|   |       utils.spec.ts
+|   |       utils.ts
+|   |
+|   \---pages
+|           Chat.tsx
+|           ChromeExtension.tsx
+|           Community.tsx
+|           Dashboard.tsx
+|           Flashcards.tsx
+|           Index.tsx
+|           Library.tsx
+|           Notes.tsx
+|           NotFound.tsx
+|           PDF.tsx
+|           Planner.tsx
+|           PPT.tsx
+|           YouTube.tsx
+|
++---netlify
+|   \---functions
+|           api.ts
+|
++---public
+|       favicon.ico
+|       placeholder.svg
+|       robots.txt
+|
++---server
+|   |   index.ts
+|   |   node-build.ts
+|   |
+|   \---routes
+|           demo.ts
+|
+\---shared
+        api.ts
+
+PS C:\Users\Prakriti\Desktop\Projects\NoteGPT (1)> 

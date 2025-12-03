@@ -1,3 +1,64 @@
+// import { useState } from "react";
+// import { Button } from "@/components/ui/button";
+// import BackButton from "@/components/BackButton";
+
+// interface HistoryItem {
+//   id: string;
+//   topic: string;
+//   count: number;
+//   timestamp: Date;
+// }
+
+// type Template = "minimal" | "gradient" | "neon";
+
+// export default function PPT() {
+//   const [topics, setTopics] = useState("");
+//   const [slides, setSlides] = useState<string[][]>([]);
+//   const [template, setTemplate] = useState<Template>("minimal");
+//   const [history, setHistory] = useState<HistoryItem[]>([]);
+
+//   const generate = () => {
+//     const t = (topics || "AI in Education").trim();
+//     const parts = (topics || "Overview; Key Concepts; Use Cases; Tips; Summary").split(/[;\n]/).map(s=> s.trim()).filter(Boolean);
+//     const deck: string[][] = [
+//       ["Title: " + t, "Overview of the topic", "Why it matters"],
+//       ["Key Concepts", ...parts.slice(0,3)],
+//       ["Use Cases", "Example A", "Example B", "Example C"],
+//       ["Next Steps", "Resources", "Q&A"],
+//     ];
+//     setSlides(deck);
+//     setHistory(h => [{ id: Math.random().toString(36).slice(2), topic: t, count: deck.length, timestamp: new Date() }, ...h]);
+//   };
+
+//   const removeHistoryItem = (id: string) => {
+//     setHistory(history.filter(item => item.id !== id));
+//   };
+
+//   const clearAllHistory = () => {
+//     setHistory([]);
+//   };
+
+//   const formatTime = (date: Date) => {
+//     const now = new Date();
+//     const diffMs = now.getTime() - date.getTime();
+//     const diffMins = Math.floor(diffMs / 60000);
+//     const diffHours = Math.floor(diffMs / 3600000);
+//     const diffDays = Math.floor(diffMs / 86400000);
+
+//     if (diffMins < 60) return `${diffMins}m ago`;
+//     if (diffHours < 24) return `${diffHours}h ago`;
+//     if (diffDays < 7) return `${diffDays}d ago`;
+//     return date.toLocaleDateString();
+//   };
+
+//   const slideClasses = (i: number) => {
+//     if (template === "minimal") return "bg-white text-foreground border";
+//     if (template === "gradient") return "text-white border-0 bg-gradient-to-br from-[hsl(var(--brand-blue))] via-[hsl(var(--brand-pink))] to-[hsl(var(--brand-lime))]";
+//     return i === 0
+//       ? "bg-[hsl(var(--brand-purple))] text-white border-0"
+//       : "bg-[hsl(var(--brand-lime)/0.15)] text-foreground border";
+//   };
+
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import BackButton from "@/components/BackButton";
@@ -11,27 +72,91 @@ interface HistoryItem {
 
 type Template = "minimal" | "gradient" | "neon";
 
+// map UI templates → backend template_ids
+const TEMPLATE_ID_MAP: Record<Template, string> = {
+  minimal: "template1",
+  gradient: "template2",
+  neon: "template3",
+};
+
 export default function PPT() {
   const [topics, setTopics] = useState("");
   const [slides, setSlides] = useState<string[][]>([]);
   const [template, setTemplate] = useState<Template>("minimal");
   const [history, setHistory] = useState<HistoryItem[]>([]);
 
-  const generate = () => {
+  const generate = async () => {
     const t = (topics || "AI in Education").trim();
-    const parts = (topics || "Overview; Key Concepts; Use Cases; Tips; Summary").split(/[;\n]/).map(s=> s.trim()).filter(Boolean);
+    const parts = (
+      topics || "Overview; Key Concepts; Use Cases; Tips; Summary"
+    )
+      .split(/[;\n]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    // local preview deck for UI
     const deck: string[][] = [
       ["Title: " + t, "Overview of the topic", "Why it matters"],
-      ["Key Concepts", ...parts.slice(0,3)],
+      ["Key Concepts", ...parts.slice(0, 3)],
       ["Use Cases", "Example A", "Example B", "Example C"],
       ["Next Steps", "Resources", "Q&A"],
     ];
+
     setSlides(deck);
-    setHistory(h => [{ id: Math.random().toString(36).slice(2), topic: t, count: deck.length, timestamp: new Date() }, ...h]);
+    setHistory((h) => [
+      {
+        id: Math.random().toString(36).slice(2),
+        topic: t,
+        count: deck.length,
+        timestamp: new Date(),
+      },
+      ...h,
+    ]);
+
+    // 🔥 call backend to actually generate PPTX file
+    const templateId = TEMPLATE_ID_MAP[template];
+    const numSlides = deck.length;
+
+    try {
+      const res = await fetch(
+        "http://127.0.0.1:8000/api/ppt/ppt/generate",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            topic: t,
+            template_id: templateId,
+            num_slides: numSlides,
+          }),
+        }
+      );
+
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error("PPT generation failed:", errText);
+        alert("Failed to generate PPT file.");
+        return;
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+
+      // trigger download
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${t}.pptx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      alert("Error connecting to PPT backend.");
+    }
   };
 
   const removeHistoryItem = (id: string) => {
-    setHistory(history.filter(item => item.id !== id));
+    setHistory(history.filter((item) => item.id !== id));
   };
 
   const clearAllHistory = () => {
@@ -53,7 +178,8 @@ export default function PPT() {
 
   const slideClasses = (i: number) => {
     if (template === "minimal") return "bg-white text-foreground border";
-    if (template === "gradient") return "text-white border-0 bg-gradient-to-br from-[hsl(var(--brand-blue))] via-[hsl(var(--brand-pink))] to-[hsl(var(--brand-lime))]";
+    if (template === "gradient")
+      return "text-white border-0 bg-gradient-to-br from-[hsl(var(--brand-blue))] via-[hsl(var(--brand-pink))] to-[hsl(var(--brand-lime))]";
     return i === 0
       ? "bg-[hsl(var(--brand-purple))] text-white border-0"
       : "bg-[hsl(var(--brand-lime)/0.15)] text-foreground border";

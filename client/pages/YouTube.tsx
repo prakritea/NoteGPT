@@ -25,23 +25,20 @@ function extractYouTubeId(url: string): string | null {
 export default function YouTube() {
   const [url, setUrl] = useState("");
   const [summary, setSummary] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
   const [history, setHistory] = useState<HistoryItem[]>([
     { id: "1", title: "Harvard CS50 – Lecture 1", timestamp: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000) },
     { id: "2", title: "Deep Learning 101", timestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000) },
     { id: "3", title: "React Hooks Crash Course", timestamp: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000) },
   ]);
 
+  // Keep the same extractor you already have in file (this snippet assumes it exists)
   const videoId = useMemo(() => extractYouTubeId(url), [url]);
   const watchUrl = videoId ? `https://www.youtube.com/watch?v=${videoId}` : url || "https://www.youtube.com";
 
-  const handleSummarize = () => {
-    setSummary(
-      "This video covers core ideas with timestamps, examples, and a concise 5‑bullet overview. It introduces the topic, demonstrates key steps, provides tips, and concludes with action items."
-    );
-  };
-
   const removeHistoryItem = (id: string) => {
-    setHistory(history.filter(item => item.id !== id));
+    setHistory((h) => h.filter((item) => item.id !== id));
   };
 
   const clearAllHistory = () => {
@@ -59,6 +56,51 @@ export default function YouTube() {
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays < 7) return `${diffDays}d ago`;
     return date.toLocaleDateString();
+  };
+
+  // 🔥 Call backend to summarize the YouTube video
+  const handleSummarize = async () => {
+    if (!url) {
+      alert("Please paste a YouTube link first.");
+      return;
+    }
+
+    setLoading(true);
+    setSummary(null);
+
+    try {
+      const res = await fetch("http://127.0.0.1:8000/api/youtube/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error("YouTube summarization failed:", errText);
+        setSummary("Failed to summarize video. See console for details.");
+        setLoading(false);
+        return;
+      }
+
+      const data = await res.json();
+      const got = data.summary ?? data?.result ?? null;
+
+      if (got) {
+        setSummary(got);
+
+        // update history with a readable title (use videoId if present)
+        const title = videoId ? `YouTube: ${videoId}` : (url.length > 80 ? url.slice(0, 80) + "…" : url);
+        setHistory((h) => [{ id: Math.random().toString(36).slice(2), title, timestamp: new Date() }, ...h]);
+      } else {
+        setSummary("No summary returned from server.");
+      }
+    } catch (err) {
+      console.error("Error calling backend /api/youtube/:", err);
+      setSummary("Error connecting to server.");
+    }
+
+    setLoading(false);
   };
 
   return (

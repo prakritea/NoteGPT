@@ -1,195 +1,253 @@
-# # backend/services/ppt_logic.py
-
-# import os
-# from typing import List
-# from pptx import Presentation
-# from pptx.util import Inches, Pt
-
-# # If using OpenAI for content generation
-# import openai
-# openai.api_key = os.getenv("OPENAI_API_KEY")
-
-# from models.schemas import PPTRequest, SlideContent
-
-# def generate_slide_content(topic: str, num_slides: int) -> List[SlideContent]:
-#     """
-#     Use LLM to generate titles + bullets for each slide given a topic.
-#     """
-#     prompt = f"""
-# You are an assistant that creates PowerPoint slide outlines.
-# Generate {num_slides} slides for the topic: "{topic}".
-# For each slide, give a title and 3‑5 bullet points.
-# Return in JSON format, like:
-# [
-#   {{
-#     "title": "Slide 1 title",
-#     "bullets": ["point 1", "point 2", "point 3"]
-#   }},
-#   ...
-# ]
-# """
-#     response = openai.ChatCompletion.create(
-#         model="gpt-3.5-turbo",
-#         messages=[
-#             {"role": "system", "content": "You are a helpful assistant that helps generate slide content."},
-#             {"role": "user", "content": prompt}
-#         ],
-#         temperature=0.7,
-#         max_tokens=500
-#     )
-#     content = response.choices[0].message.content.strip()
-#     import json
-#     try:
-#         slides = json.loads(content)
-#     except json.JSONDecodeError:
-#         # fallback: simple parsing
-#         slides = []
-#         # Simple fallback: split by lines etc. (not shown here)
-#     # Each slide: ensure title and bullets
-#     results: List[SlideContent] = []
-#     for s in slides:
-#         title = s.get("title", "").strip()
-#         bullets = s.get("bullets", [])
-#         if title and isinstance(bullets, list) and bullets:
-#             results.append(SlideContent(title=title, bullets=[b.strip() for b in bullets if isinstance(b, str) and b.strip()]))
-#     return results
-
-# def build_ppt_from_content(slides: List[SlideContent], template_id: str, output_path: str) -> str:
-#     """
-#     Using a chosen template, build a pptx file with content and save to output_path.
-#     Returns the path of generated ppt file.
-#     """
-#     template_path = os.path.join("templates", f"{template_id}.pptx")
-#     if not os.path.exists(template_path):
-#         raise FileNotFoundError(f"Template {template_id} not found.")
-    
-#     prs = Presentation(template_path)
-    
-#     # Choose which slide layout index to use for slides; depends on template
-#     # For example, assume template layout 1 is Title + Content
-#     slide_layout = prs.slide_layouts[1]  # adjust as per template
-
-#     for slide_content in slides:
-#         slide = prs.slides.add_slide(slide_layout)
-#         # set title
-#         title_placeholder = slide.shapes.title
-#         title_placeholder.text = slide_content.title
-
-#         # find content placeholder (usually the first placeholder that's not title)
-#         # Then add bullets
-#         for shp in slide.shapes:
-#             if not shp.has_text_frame:
-#                 continue
-#             # ignore title
-#             if shp == title_placeholder:
-#                 continue
-#             tf = shp.text_frame
-#             tf.clear()
-#             for b in slide_content.bullets:
-#                 p = tf.add_paragraph()
-#                 p.text = b
-#                 p.level = 0
-#             break
-
-#     # Save
-#     prs.save(output_path)
-#     return output_path
-
+# backend/services/ppt_logic.py
 
 import os
-from typing import List
-from pptx import Presentation
-from pptx.util import Inches, Pt
-from backend.utils.grok_helper import generate_grok_response
-from models.schemas import PPTRequest, SlideContent
 import json
+import re
+from typing import List
 
-def generate_slide_content(topic: str, num_slides: int) -> List[SlideContent]:
+from pptx import Presentation
+from backend.utils.gemini_helper import generate_gemini_response_async
+from backend.models.schemas import SlideContent
+
+# Base directory: <project root>/backend
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Absolute templates dir: <project root>/backend/templates
+TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
+
+# Map friendly template ids to actual filenames (avoid requiring spaces/exact names)
+TEMPLATE_MAP = {
+    "template1": "Template 1.pptx",
+    "template2": "Template 2.pptx",
+    "template3": "Template 3.pptx",
+    # add more mappings as needed
+}
+
+
+def resolve_template_filename(template_id: str) -> str:
     """
-    Use Grok API to generate titles + bullets for each slide given a topic.
+    Given a template_id from the request, return a filename inside /backend/templates.
+    Allows using friendly ids (template1, template2, etc.) or a direct filename.
     """
-    # Create prompt to generate slide content using Grok API
-    prompt = f"""
-You are an assistant that creates PowerPoint slide outlines.
-Generate {num_slides} slides for the topic: "{topic}".
-For each slide, give a title and 3‑5 bullet points.
-Return the slides in JSON format, like:
-[
-  {{
-    "title": "Slide 1 title",
-    "bullets": ["point 1", "point 2", "point 3"]
-  }},
-  ...
-]
-"""
-    # Send the prompt to Grok API and get the content
-    content = generate_grok_response(prompt)
-    
-    # Try to parse the response from Grok
-    try:
-        slides = json.loads(content)
-    except json.JSONDecodeError:
-        slides = []
-        print(f"Failed to parse Grok response as JSON. Response: {content}")
-    
-    # Check if the response is empty or malformed
-    if not slides:
-        print("No valid slides returned from Grok. Please check the prompt or API response.")
+    if template_id in TEMPLATE_MAP:
+        return TEMPLATE_MAP[template_id]
+    # sanitize input to filename only
+    return os.path.basename(template_id)
+
+
+def _extract_json_array(text: str) -> str:
+    """
+    Extract the first top-level JSON array from the model output.
+    Handles cases where the model wraps JSON in markdown/code fences or extra text.
+    """
+    # Strip markdown code fences if present
+    cleaned = re.sub(r"```(?:json)?", "", text, flags=re.IGNORECASE).strip()
+
+    start = cleaned.find("[")
+    end = cleaned.rfind("]")
+
+    if start == -1 or end == -1 or end <= start:
+        # fallback: just return the cleaned text
+        return cleaned
+
+    return cleaned[start : end + 1]
+
+
+async def generate_slide_content(topic: str, num_slides: int) -> List[SlideContent]:
+    """
+    Use Gemini to generate slide outlines. Returns a list of SlideContent objects.
+    Each SlideContent has a title and a list of bullet strings.
+    """
+    prompt = (
+        "You are an assistant that creates PowerPoint slide outlines.\n\n"
+        f"Topic: {topic}\n"
+        f"Generate exactly {num_slides} slides.\n\n"
+        "For EACH slide, provide:\n"
+        '- \"title\": a short, clear slide title\n'
+        '- \"bullets\": a list of 3–5 concise bullet points as strings\n\n'
+        "Return the result as a JSON array of objects, like this:\n"
+        "[\n"
+        "  {\n"
+        "    \"title\": \"Slide 1 title\",\n"
+        "    \"bullets\": [\"point 1\", \"point 2\", \"point 3\"]\n"
+        "  },\n"
+        "  {\n"
+        "    \"title\": \"Slide 2 title\",\n"
+        "    \"bullets\": [\"point 1\", \"point 2\", \"point 3\"]\n"
+        "  }\n"
+        "]\n\n"
+        "IMPORTANT:\n"
+        "- Return ONLY the JSON array.\n"
+        "- Do NOT include any explanations, markdown, or text before/after the JSON.\n"
+    )
+
+    raw = await generate_gemini_response_async(prompt)
+    if not raw:
         return []
 
-    # Create SlideContent objects from the parsed response
+    json_str = _extract_json_array(raw)
+
+    try:
+        slides_json = json.loads(json_str)
+    except json.JSONDecodeError:
+        # As a fallback, try to recover line-by-line objects (very lenient)
+        slides_json = []
+        for line in raw.splitlines():
+            line = line.strip()
+            if not line or not line.startswith("{"):
+                continue
+            try:
+                obj = json.loads(line.rstrip(","))
+                slides_json.append(obj)
+            except Exception:
+                continue
+
     results: List[SlideContent] = []
-    for s in slides:
-        title = s.get("title", "").strip()
-        bullets = s.get("bullets", [])
-        
-        # Only add slides that have valid titles and bullets
-        if title and isinstance(bullets, list) and bullets:
-            # Clean up the bullet points and add them to the results list
-            results.append(SlideContent(
-                title=title, 
-                bullets=[b.strip() for b in bullets if isinstance(b, str) and b.strip()]
-            ))
-    
+
+    if isinstance(slides_json, list):
+        for s in slides_json:
+            if not isinstance(s, dict):
+                continue
+            title = str(s.get("title", "")).strip()
+            bullets = s.get("bullets", [])
+            if not title or not isinstance(bullets, list):
+                continue
+
+            cleaned_bullets = [
+                str(b).strip()
+                for b in bullets
+                if isinstance(b, (str, int, float)) and str(b).strip()
+            ]
+            if cleaned_bullets:
+                results.append(
+                    SlideContent(
+                        title=title,
+                        bullets=cleaned_bullets,
+                    )
+                )
+
     return results
+
+
+def _remove_slide(prs: Presentation, index: int) -> None:
+    """
+    Remove a slide at the given index from a Presentation.
+    python-pptx has no official API for this, so we use the underlying XML list.
+    """
+    slide_id_list = prs.slides._sldIdLst  # type: ignore[attr-defined]
+    slide_ids = list(slide_id_list)
+    slide_id_list.remove(slide_ids[index])
+
 
 def build_ppt_from_content(slides: List[SlideContent], template_id: str, output_path: str) -> str:
     """
-    Using a chosen template, build a PowerPoint file with content and save to output_path.
-    Returns the path of the generated PowerPoint file.
+    Build a PPTX by OVERWRITING the content of existing template slides.
+
+    - Slide 0 (cover): only overwrite the title (no bullets).
+    - Other slides: overwrite title + put bullets into the best candidate text frame:
+        1) Prefer BODY/SUBTITLE placeholders (if any).
+        2) Prefer shapes on the right half of the slide (common for modern templates).
+        3) Otherwise fall back to the largest text frame (by width * height).
+    Works reasonably across many templates without hardcoding indices.
     """
-    # Find the template path
-    template_path = os.path.join("templates", f"{template_id}.pptx")
+    template_filename = resolve_template_filename(template_id)
+    template_path = os.path.join(TEMPLATES_DIR, template_filename)
+
     if not os.path.exists(template_path):
-        raise FileNotFoundError(f"Template {template_id} not found.")
-    
+        raise FileNotFoundError(f"Template {template_filename} not found at {template_path}")
+
     prs = Presentation(template_path)
-    
-    # Choose slide layout for the slides (adjust based on your template)
-    slide_layout = prs.slide_layouts[1]  # Usually Title + Content layout
 
-    # Add slides with the content
-    for slide_content in slides:
-        slide = prs.slides.add_slide(slide_layout)
-        
-        # Set the slide title
-        title_placeholder = slide.shapes.title
-        title_placeholder.text = slide_content.title
+    # choose a default layout (used when we must add new slides)
+    try:
+        default_layout = prs.slide_layouts[1]
+    except Exception:
+        default_layout = prs.slide_layouts[0]
 
-        # Add bullet points to the content placeholder
+    slide_width = prs.slide_width
+
+    for idx, slide_content in enumerate(slides):
+        # Reuse existing slide if available, else add a new one
+        if idx < len(prs.slides):
+            slide = prs.slides[idx]
+        else:
+            slide = prs.slides.add_slide(default_layout)
+
+        # -------- TITLE SHAPE --------
+        title_shape = None
+        # Prefer placeholder titles if present
         for shp in slide.shapes:
-            if not shp.has_text_frame:
+            if getattr(shp, "is_placeholder", False):
+                phf = getattr(shp, "placeholder_format", None)
+                if phf and phf.type in (1, 3):  # TITLE or CENTER_TITLE
+                    title_shape = shp
+                    break
+        # Fallback: use slide.shapes.title if available
+        if title_shape is None and slide.shapes.title:
+            title_shape = slide.shapes.title
+
+        if title_shape is not None and getattr(title_shape, "has_text_frame", False):
+            title_shape.text = slide_content.title
+
+        # -------- COVER SLIDE: SKIP BULLETS --------
+        if idx == 0:
+            continue
+
+        # -------- BODY SHAPE SELECTION --------
+        candidates = []
+
+        for shp in slide.shapes:
+            if shp is title_shape:
                 continue
-            if shp == title_placeholder:
+            if not getattr(shp, "has_text_frame", False):
                 continue
-            tf = shp.text_frame
+            candidates.append(shp)
+
+        if not candidates:
+            continue
+
+        # (1) Prefer BODY or SUBTITLE placeholders
+        placeholder_candidates = []
+        for shp in candidates:
+            if getattr(shp, "is_placeholder", False):
+                phf = getattr(shp, "placeholder_format", None)
+                if phf and phf.type in (2, 4):  # BODY, SUBTITLE
+                    placeholder_candidates.append(shp)
+
+        if placeholder_candidates:
+            candidates = placeholder_candidates
+
+        # (2) Prefer shapes on the right half of the slide (for templates with text on the right)
+        right_side_candidates = []
+        for shp in candidates:
+            center_x = getattr(shp, "left", 0) + getattr(shp, "width", 0) // 2
+            if center_x > slide_width // 2:
+                right_side_candidates.append(shp)
+
+        if right_side_candidates:
+            candidates = right_side_candidates
+
+        # (3) Choose the largest remaining candidate by area
+        body_shape = None
+        max_area = 0
+        for shp in candidates:
+            width = getattr(shp, "width", 0)
+            height = getattr(shp, "height", 0)
+            area = int(width) * int(height)
+            if area > max_area:
+                max_area = area
+                body_shape = shp
+
+        if body_shape is not None and getattr(body_shape, "has_text_frame", False):
+            tf = body_shape.text_frame
             tf.clear()
             for b in slide_content.bullets:
                 p = tf.add_paragraph()
                 p.text = b
-                p.level = 0  # No indentation for the bullets
-            break
+                p.level = 0
 
-    # Save the generated PowerPoint presentation
+    # Remove any extra template slides beyond what we used
+    while len(prs.slides) > len(slides):
+        _remove_slide(prs, len(prs.slides) - 1)
+
     prs.save(output_path)
     return output_path

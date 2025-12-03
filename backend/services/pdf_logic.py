@@ -1,55 +1,16 @@
-# # backend/services/pdf_logic.py
+# backend/services/pdf_logic.py
 
-# from typing import Union
-# import io
-# from transformers import pipeline
-# from PyPDF2 import PdfReader
-
-# # Summarizer model — choose lightweight but good
-# summarizer = pipeline("summarization", model="sshleifer/distilbart-cnn-12-6")
-
-# def extract_text_from_pdf(file_stream: io.BytesIO) -> str:
-#     reader = PdfReader(file_stream)
-#     text = ""
-#     for page in reader.pages:
-#         # `extract_text()` may return None or empty string
-#         page_text = page.extract_text()
-#         if page_text:
-#             text += page_text + "\n"
-#     return text
-
-# def summarize_text(text: str) -> str:
-#     # chunk if too large
-#     max_chunk_size = 1000  # adjust as needed
-#     chunks = [text[i:i + max_chunk_size] for i in range(0, len(text), max_chunk_size)]
-#     summary = ""
-#     for chunk in chunks:
-#         result = summarizer(chunk, max_length=150, min_length=50, do_sample=False)
-#         summary += result[0]['summary_text'] + " "
-#     return summary.strip()
-
-# def summarize_pdf_file(file) -> str:
-#     """
-#     file: File-like (UploadFile.file in FastAPI)
-#     """
-#     # Read file bytes
-#     file_bytes = file.read()
-#     # Use BytesIO
-#     stream = io.BytesIO(file_bytes)
-#     text = extract_text_from_pdf(stream)
-#     if not text or text.strip() == "":
-#         raise ValueError("Could not extract any text from PDF")
-#     summary = summarize_text(text)
-#     return summary
-
-
-from typing import Union
 import io
-from backend.utils.grok_helper import generate_grok_response
+from typing import List
+
 from PyPDF2 import PdfReader
+from backend.utils.gemini_helper import generate_gemini_response_async
+
 
 def extract_text_from_pdf(file_stream: io.BytesIO) -> str:
-    """Extract text from a PDF file."""
+    """
+    Extracts plain text from all pages of a PDF using PyPDF2.
+    """
     reader = PdfReader(file_stream)
     text = ""
     for page in reader.pages:
@@ -58,37 +19,70 @@ def extract_text_from_pdf(file_stream: io.BytesIO) -> str:
             text += page_text + "\n"
     return text
 
-def summarize_text(text: str) -> str:
-    """Summarize text using Grok API."""
-    # Check for text length, and handle chunking if too long
-    max_length = 2000  # Grok may have limits on input length
-    if len(text) > max_length:
-        # If the text is too long, split it into chunks and summarize each part
-        chunks = [text[i:i + max_length] for i in range(0, len(text), max_length)]
-        summary = ""
-        for chunk in chunks:
-            prompt = f"Please summarize the following text:\n{chunk}"
-            chunk_summary = generate_grok_response(prompt)
-            summary += chunk_summary + " "
-        return summary.strip()
 
-    # For shorter text, generate a direct summary
-    prompt = f"Please summarize the following text:\n{text}"
-    summary = generate_grok_response(prompt)
-    return summary.strip()
+async def summarize_long_text_with_gemini(text: str) -> str:
+    """
+    Summarize a long text using Gemini in two passes:
+    1) Chunk the text and summarize each chunk.
+    2) Summarize the chunk summaries into a final concise summary.
+    """
+    # Rough character limit per chunk to stay within token limits
+    max_chunk_chars = 4000
 
-def summarize_pdf_file(file) -> str:
-    """Summarize the text extracted from a PDF file using Grok API."""
-    # Read the file's bytes
-    file_bytes = file.read()
-    
-    # Use BytesIO to handle the file stream
-    stream = io.BytesIO(file_bytes)
-    text = extract_text_from_pdf(stream)
-    
+    if len(text) <= max_chunk_chars:
+        prompt = (
+            "You are an assistant that summarizes PDF documents.\n\n"
+            "Summarize the following content into a clear, concise explanation. "
+            "Use bullet points where helpful, but keep it under about 10 bullet points. "
+            "Focus on the main ideas, definitions, and conclusions, not minor details.\n\n"
+            f"CONTENT:\n{text}"
+        )
+        return (await generate_gemini_response_async(prompt)).strip()
+
+    # Split into chunks
+    chunks: List[str] = [
+        text[i : i + max_chunk_chars]
+        for i in range(0, len(text), max_chunk_chars)
+    ]
+
+    partial_summaries: List[str] = []
+    for idx, chunk in enumerate(chunks, start=1):
+        prompt = (
+            "You are an assistant that summarizes parts of a longer PDF document.\n\n"
+            f"This is chunk {idx} of {len(chunks)}.\n"
+            "Summarize this chunk into 3–6 concise bullet points highlighting "
+            "the most important concepts, definitions, or steps.\n\n"
+            f"CHUNK CONTENT:\n{chunk}"
+        )
+        summary = await generate_gemini_response_async(prompt)
+        partial_summaries.append(summary)
+
+    combined = "\n\n".join(partial_summaries)
+
+    # Final pass: summarize summaries
+    final_prompt = (
+        "You are an assistant that creates a final summary from partial summaries "
+        "of a PDF document.\n\n"
+        "Below are bullet-point summaries of different parts of the same document.\n"
+        "Combine them into a single, coherent summary with:\n"
+        "- 5–10 bullet points\n"
+        "- No repetition\n"
+        "- Clear structure (group related ideas together)\n\n"
+        "Keep the summary focused on the key concepts and main arguments.\n\n"
+        f"PARTIAL SUMMARIES:\n{combined}"
+    )
+    final_summary = await generate_gemini_response_async(final_prompt)
+    return final_summary.strip()
+
+
+async def summarize_pdf_file(file_stream: io.BytesIO) -> str:
+    """
+    Main entry point used by the router:
+    1) Extract all text from the PDF.
+    2) Summarize the extracted text using Gemini.
+    """
+    text = extract_text_from_pdf(file_stream)
     if not text or text.strip() == "":
         raise ValueError("Could not extract any text from PDF")
-    
-    # Get the summary using Grok API
-    summary = summarize_text(text)
-    return summary
+
+    return await summarize_long_text_with_gemini(text)

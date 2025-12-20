@@ -1,8 +1,6 @@
-# backend/services/summarizer.py
-
 import re
 import asyncio
-from typing import List
+from typing import List, Dict, Any
 
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound
@@ -32,14 +30,13 @@ def extract_video_id(url: str) -> str:
 def get_transcript(video_id: str) -> List[dict]:
     """
     Fetch transcript for a YouTube video using the new YouTubeTranscriptApi instance API.
+    Returns a list of dicts: {text, start, duration}.
     """
     try:
         api = YouTubeTranscriptApi()
         # In the latest version, `fetch` returns a FetchedTranscript object.
         fetched = api.fetch(video_id)
 
-        # It has a `.snippets` attribute with items having `.text`, `.start`, `.duration`
-        # We convert it to the same list-of-dicts shape you used before.
         transcript = [
             {
                 "text": snippet.text,
@@ -51,6 +48,7 @@ def get_transcript(video_id: str) -> List[dict]:
         return transcript
 
     except TranscriptsDisabled:
+        # We raise a specific message so caller can handle gracefully
         raise RuntimeError("Transcripts are disabled for this video.")
     except NoTranscriptFound:
         raise RuntimeError("No transcript available for this video.")
@@ -63,8 +61,7 @@ async def summarize_text_with_gemini(full_text: str) -> str:
     Summarize long transcript text using Gemini.
     If text is very long, summarize in chunks then summarize the summaries.
     """
-    # Rough character limit per chunk to stay within token limits
-    max_chunk_chars = 4000
+    max_chunk_chars = 4000  # Rough character limit per chunk
 
     if len(full_text) <= max_chunk_chars:
         prompt = (
@@ -105,14 +102,43 @@ async def summarize_text_with_gemini(full_text: str) -> str:
     return await generate_gemini_response_async(final_prompt)
 
 
-async def summarize_youtube_video(url: str) -> str:
-    video_id = extract_video_id(url)
+async def summarize_youtube_video(url: str) -> Dict[str, Any]:
+    """
+    Fetch transcript and return BOTH:
+    - summary: text (or a helpful explanation message)
+    - transcript: list of {text, start, duration}
+    This function tries to avoid throwing errors up to the router.
+    """
+    try:
+        video_id = extract_video_id(url)
+    except ValueError as e:
+        # Invalid URL format
+        return {
+            "summary": str(e),
+            "transcript": [],
+        }
 
     # get_transcript is blocking → run in thread
-    transcript = await asyncio.to_thread(get_transcript, video_id)
+    try:
+        transcript = await asyncio.to_thread(get_transcript, video_id)
+    except RuntimeError as e:
+        # Transcripts disabled / not found / fetch error
+        return {
+            "summary": str(e),
+            "transcript": [],
+        }
 
     text = " ".join([t.get("text", "") for t in transcript]).strip()
     if not text:
-        return "No transcript available."
+        return {"summary": "No transcript text found.", "transcript": []}
 
-    return await summarize_text_with_gemini(text)
+    try:
+        summary = await summarize_text_with_gemini(text)
+    except Exception as e:
+        # Gemini failed – return at least the transcript
+        summary = f"Failed to generate AI summary: {e}"
+
+    return {
+        "summary": summary,
+        "transcript": transcript,
+    }

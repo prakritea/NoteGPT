@@ -1,4 +1,3 @@
-# backend/routers/youtube.py
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -13,8 +12,27 @@ class YouTubeRequests(BaseModel):
 
 @router.post("/")
 async def summarize_youtube(data: YouTubeRequests):
+    """
+    Returns JSON:
+    {
+      "summary": str,
+      "transcript": [ { "text": str, "start": float, "duration": float }, ... ]
+    }
+    We only raise HTTPException on unexpected errors.
+    """
     try:
-        summary = await summarize_youtube_video(data.url)
-        return {"summary": summary}
+        result = await summarize_youtube_video(data.url)
+
+        # If summarize_youtube_video managed its own errors,
+        # `result` will always be a dict with "summary" and "transcript".
+        if not isinstance(result, dict):
+            raise RuntimeError("Internal summarizer returned invalid data.")
+
+        return result
+
+    except HTTPException:
+        # Re-raise if it was already an HTTPException
+        raise
     except Exception as e:
+        # Unexpected error
         raise HTTPException(status_code=500, detail=str(e))
